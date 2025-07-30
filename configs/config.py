@@ -93,8 +93,8 @@ def get_args():
     # GPU settings
     args.use_gpu = True if torch.cuda.is_available() else False
     args.use_multi_gpu = True
-    args.gpu = 5
-    args.devices = "0,1,2,3,4,5,6,7"
+    args.gpu = 1
+    args.devices = "0,1"
     
     if args.use_gpu:
         os.environ["CUDA_VISIBLE_DEVICES"] = args.devices
@@ -111,7 +111,7 @@ def get_args():
     
     # training settings
     # mtl: maximum of 30 epochs with a learning rate of 0.0003
-    args.train_epochs = 300
+    args.train_epochs = 1 #300
     args.learning_rate = 0.0005 # 0.0003 
     args.weight_decay = 0.0001  # mtl, simclr weight decay
     args.learning_rate_patience = 7
@@ -123,7 +123,7 @@ def get_args():
     args.train_vali_quote = 0.90
 
     args.classifier_lr = 0.0001
-    args.classifier_epochs = 300
+    args.classifier_epochs = 1 #300
     args.classifier_batch_size = 256
     args.freeze_encoder = True  # Freeze
     
@@ -140,7 +140,8 @@ def get_args():
     args.output_size = (3, 78) 
     
     # Random seed and other settings
-    args.sensor_select = ["acc"]
+    args.sensor_select      = ["acc"] # ["acc", "gyro"]
+    args.pos_select        = None # ["hand", "chest", "ankle"]
     args.seed = 10
     args.filtering = True
     args.freq1 = 0.001
