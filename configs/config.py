@@ -1,4 +1,4 @@
-import argparse
+import argparse #하이퍼파라미터 관리
 import os
 import torch
 import yaml
@@ -20,7 +20,8 @@ def get_args():
     parser.add_argument('-d', '--data_name', default='pamap2', type=str, help='Name of the Dataset')    
     # Model
     parser.add_argument('-e', '--encoder_type', default='deepconvlstm_attn', type=str, 
-                         help='Encoder Type (deepconvlstm, deepconvlstm_attn, sa_har)')
+                         help='Encoder Type (deepconvlstm, deepconvlstm_attn, sa_har)') #encoder type
+    
     parser.add_argument('-c', '--classifier_type', default='deepconvlstm_attn_classifier', type=str, 
                          help='Classifier Type (deepconvlstm_classifier, deepconvlstm_attn_classifier, sa_har_classifier). If not specified, will auto-select based on encoder type.')
     
@@ -111,7 +112,7 @@ def get_args():
     
     # training settings
     # mtl: maximum of 30 epochs with a learning rate of 0.0003
-    args.train_epochs = 1 #300
+    args.train_epochs = 300 #300
     args.learning_rate = 0.0005 # 0.0003 
     args.weight_decay = 0.0001  # mtl, simclr weight decay
     args.learning_rate_patience = 7

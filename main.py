@@ -3,7 +3,6 @@ import datetime
 import numpy as np
 import torch
 
-
 from configs.config import get_args
 from dataloaders.data_loader import PAMAP2, get_data
 from utils.training_utils import set_seed, save_results_summary
@@ -13,7 +12,7 @@ from train.train_encoder import create_encoder, load_pretrained_encoder, Encoder
 from train.train_classifier import create_classifier, ClassifierTrainer, evaluate_classifier
 
 if __name__ == '__main__': 
-    args = get_args()
+    args = get_args() # configs/config.py
 
     # Timestamp
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
