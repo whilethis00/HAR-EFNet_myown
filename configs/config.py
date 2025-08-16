@@ -124,7 +124,7 @@ def get_args():
     args.train_vali_quote = 0.90
 
     args.classifier_lr = 0.0001
-    args.classifier_epochs = 1 #300
+    args.classifier_epochs = 300 #300
     args.classifier_batch_size = 256
     args.freeze_encoder = True  # Freeze
     

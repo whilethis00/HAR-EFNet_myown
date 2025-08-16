@@ -70,7 +70,7 @@ class ClassifierTrainer:
             os.makedirs(self.save_path)
         
         # Training settings
-        self.epochs = args.train_epochs
+        self.epochs = args.classifier_epochs
         
         # Early stopping and learning rate adjustment
         self.early_stopping = EarlyStopping(patience=args.early_stop_patience, verbose=True,

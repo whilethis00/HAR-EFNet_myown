@@ -107,7 +107,6 @@ if __name__ == '__main__':
             logger.info(f"Training classifier for fold {fold_idx+1}, test subject {current_test_subject}")
             
             args.learning_rate = args.classifier_lr
-            args.train_epochs = args.classifier_epochs
             
             # random initialization
             encoder = create_encoder(args)
