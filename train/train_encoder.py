@@ -7,8 +7,13 @@ from torch.utils.data import DataLoader, Dataset
 import yaml
 from typing import Tuple, Dict, List, Optional, Any, Union
 
-from encoders import DeepConvLSTMEncoder, DeepConvLSTMAttnEncoder, SAHAREncoder
-from dataloaders.data_utils import compute_batch_ecdf_features
+# --- 수정된 부분 1: 새로운 특징 추출 함수와 인코더 클래스를 임포트합니다. ---
+from encoders.base.deepconvlstm_encoder import DeepConvLSTMEncoder
+from encoders.base.deepconvlstm_attn_encoder import DeepConvLSTMAttnEncoder
+from encoders.base.sa_har_encoder import SAHAREncoder
+from dataloaders.data_utils import compute_batch_ecdf_features, compute_batch_extended_features
+# --------------------------------------------------------------------
+
 from utils.training_utils import EarlyStopping, adjust_learning_rate, set_seed
 from utils.logger import Logger
 
@@ -18,83 +23,67 @@ Logger.initialize(log_dir='logs')
 class EncoderTrainer:
     """
     ECDF feature prediction encoder training class
-    """
+    """"
     def __init__(self, args: Any, model: nn.Module, save_path: str):
-        """
+        """"
         Initialize the encoder trainer
         
         Args:
             args: configuration parameters
             model: encoder model to train
             save_path: model save path
-        """
+        """"
         self.model = model
+        self.args = args # args를 저장하여 나중에 사용
         self.device = args.device
         self.model.to(self.device)
         
-        # Initialize logger
         self.logger = Logger(f"encoder_{args.encoder_type}")
         self.logger.info(f"Using device: {self.device}")
         
-        # Use MSE Loss
         self.criterion = nn.MSELoss()
         
-        # Setup optimizer
         if args.optimizer == "Adam":
             self.optimizer = optim.Adam(self.model.parameters(), lr=args.learning_rate)
         else:
             self.optimizer = optim.SGD(self.model.parameters(), lr=args.learning_rate)
         
-        # Save path and logging setup
         self.save_path = save_path
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
         
-        # Training settings
         self.epochs = args.train_epochs
         
-        # Early stopping and learning rate adjustment
         self.early_stopping = EarlyStopping(patience=args.early_stop_patience, verbose=True, 
                                           logger_name=f"es_encoder_{args.encoder_type}")
-        # self.learning_rate_adapter = adjust_learning_rate(args, verbose=True, 
-        #                                               logger_name=f"lr_encoder_{args.encoder_type}")
-    
+
     def train_epoch(self, train_loader: DataLoader) -> Tuple[float, float]:
-        """
-        Train one epoch
-        
-        Args:
-            train_loader: Training data loader
-            
-        Returns:
-            Training loss, epoch time in seconds
-        """
         self.model.train()
         train_loss = []
         epoch_time = time.time()
         batch_count = 0
-        # batch_x.shape: (128, 168, 9)
-        for batch_x, _ in train_loader:  # label is not needed for ECDF features
+        for batch_x, _ in train_loader:
             batch_count += 1
             self.logger.debug(f"Processing batch #{batch_count} in train epoch")
             
-            # Process input data
             batch_x = batch_x.float().to(self.device)
             
-            # Compute ECDF features (Ground Truth) - [batch_size, 3, 78] = [128, 3, 78]
-            batch_ecdf = torch.tensor(compute_batch_ecdf_features(batch_x), 
-                                    dtype=torch.float32).to(self.device)
-            
-            # Predict ECDF features - [batch_size, 3, 78]
-            predicted_ecdf = self.model(batch_x)
-            
-
-            if hasattr(self.model, 'calculate_loss'):
-                loss, _ = self.model.calculate_loss(predicted_ecdf, batch_ecdf)
+            # --- 수정된 부분 2: encoder_type에 따라 다른 특징 추출 함수를 호출합니다. ---
+            if self.args.encoder_type == 'deepconvlstm_attn_extended':
+                batch_features = torch.tensor(compute_batch_extended_features(batch_x),
+                                            dtype=torch.float32).to(self.device)
             else:
-                loss = self.criterion(predicted_ecdf, batch_ecdf)
+                batch_features = torch.tensor(compute_batch_ecdf_features(batch_x), 
+                                            dtype=torch.float32).to(self.device)
+            # --------------------------------------------------------------------
+
+            predicted_features = self.model(batch_x)
             
-            # Backpropagation and optimization
+            if hasattr(self.model, 'calculate_loss'):
+                loss, _ = self.model.calculate_loss(predicted_features, batch_features)
+            else:
+                loss = self.criterion(predicted_features, batch_features)
+            
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
@@ -108,15 +97,6 @@ class EncoderTrainer:
         return train_loss, epoch_time
     
     def validate(self, valid_loader: DataLoader) -> float:
-        """
-        Validate model
-        
-        Args:
-            valid_loader: Validation data loader
-            
-        Returns:
-            Validation loss
-        """
         self.model.eval()
         valid_loss = []
         batch_count = 0
@@ -128,17 +108,21 @@ class EncoderTrainer:
                 
                 batch_x = batch_x.float().to(self.device)
                 
-                # Compute ECDF features (Ground Truth) - [batch_size, 3, 78]
-                batch_ecdf = torch.tensor(compute_batch_ecdf_features(batch_x), 
-                                        dtype=torch.float32).to(self.device)
-                
-                # Predict ECDF features - [batch_size, 3, 78]
-                predicted_ecdf = self.model(batch_x)
+                # --- 수정된 부분 3: train_epoch와 동일하게 수정합니다. ---
+                if self.args.encoder_type == 'deepconvlstm_attn_extended':
+                    batch_features = torch.tensor(compute_batch_extended_features(batch_x),
+                                                dtype=torch.float32).to(self.device)
+                else:
+                    batch_features = torch.tensor(compute_batch_ecdf_features(batch_x), 
+                                                dtype=torch.float32).to(self.device)
+                # --------------------------------------------------------------------
+
+                predicted_features = self.model(batch_x)
                 
                 if hasattr(self.model, 'calculate_loss'):
-                    loss, _ = self.model.calculate_loss(predicted_ecdf, batch_ecdf)
+                    loss, _ = self.model.calculate_loss(predicted_features, batch_features)
                 else:
-                    loss = self.criterion(predicted_ecdf, batch_ecdf)
+                    loss = self.criterion(predicted_features, batch_features)
                 
                 valid_loss.append(loss.item())
         
@@ -148,74 +132,42 @@ class EncoderTrainer:
         return valid_loss
     
     def train(self, train_loader: DataLoader, valid_loader: DataLoader) -> nn.Module:
-        """
-        Complete training process
-        
-        Args:
-            train_loader: Training data loader
-            valid_loader: Validation data loader
-            
-        Returns:
-            Trained model
-        """
         self.logger.info(f"Starting encoder training, saving to: {self.save_path}")
         
         for epoch in range(self.epochs):
-            # Training phase
             train_loss, epoch_time = self.train_epoch(train_loader)
+            self.logger.info(f"Epoch: {epoch+1}, train_loss: {train_loss:.7f}, time: {epoch_time:.2f}s")
             
-            log_message = f"Epoch: {epoch+1}, train_loss: {train_loss:.7f}, time: {epoch_time:.2f}s"
-            self.logger.info(log_message)
-            
-            # Validation phase
             valid_loss = self.validate(valid_loader)
+            self.logger.info(f"Validation: Epoch: {epoch+1}, Train Loss: {train_loss:.7f}, Valid Loss: {valid_loss:.7f}")
             
-            # Log validation results
-            log_message = f"Validation: Epoch: {epoch+1}, Train Loss: {train_loss:.7f}, Valid Loss: {valid_loss:.7f}"
-            self.logger.info(log_message)
-            
-            # Early stopping check
             self.early_stopping(valid_loss, self.model, self.save_path, None)
             if self.early_stopping.early_stop:
                 self.logger.info("Early stopping triggered")
                 break
-            
-            # Learning rate adjustment
-            # self.learning_rate_adapter(self.optimizer, valid_loss)
         
-        # Training complete
         self.logger.info("Encoder training completed")
         return self.model
 
 
 def create_encoder(args: Any) -> nn.Module:
-    """
-    Create encoder model based on configuration
-    
-    Args:
-        args: Configuration parameters
-        
-    Returns:
-        Created encoder model
-    """
     logger = Logger("encoder_creator")
     
-    # Convert args to dict
     encoder_args = {
         'input_channels': args.input_channels,
         'window_size': args.window_size,
-        'output_size': args.output_size, # (3, 78)
+        'output_size': args.output_size,
         'device': args.device
     }
     
-    # Load model configuration - use relative path for flexibility
     config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'configs', 'model.yaml')
     with open(config_path, mode='r') as config_file:
         model_config = yaml.load(config_file, Loader=yaml.FullLoader)
     
     encoder_config = model_config['efnet_encoder']
     
-    if  args.encoder_type == 'deepconvlstm':
+    # --- 수정된 부분 4: 새로운 인코더 타입을 위한 elif 블록을 추가합니다. ---
+    if args.encoder_type == 'deepconvlstm':
         encoder_args.update(encoder_config.get('deepconvlstm', {}))
         model_class = DeepConvLSTMEncoder
         logger.info(f"Using DeepConvLSTM encoder configuration")
@@ -225,6 +177,12 @@ def create_encoder(args: Any) -> nn.Module:
         model_class = DeepConvLSTMAttnEncoder
         logger.info(f"Using DeepConvLSTM with Attention encoder configuration")
 
+    elif args.encoder_type == 'deepconvlstm_attn_extended':
+        from encoders.base.deepconvlstm_attn_extended_encoder import DeepConvLSTMAttnExtendedEncoder
+        encoder_args.update(encoder_config.get('deepconvlstm_attn', {})) # 기본 설정은 기존 attn 모델과 공유
+        model_class = DeepConvLSTMAttnExtendedEncoder
+        logger.info(f"Using DeepConvLSTM with Extended Attention encoder configuration")
+
     elif args.encoder_type == 'sa_har':
         encoder_args.update(encoder_config.get('sa_har', {}))
         model_class = SAHAREncoder
@@ -233,28 +191,14 @@ def create_encoder(args: Any) -> nn.Module:
     else:
         logger.error(f"Unsupported encoder type: {args.encoder_type}")
         raise ValueError(f"Unsupported encoder type: {args.encoder_type}")
+    # --------------------------------------------------------------------
     
-    # Create selected encoder model
     encoder = model_class(encoder_args)
     
     logger.info(f"Created {args.encoder_type} encoder")
     return encoder
 
 def load_pretrained_encoder(encoder: nn.Module, path: str) -> nn.Module:
-    """
-    Load pretrained encoder weights from checkpoint file
-    
-    Args:
-        encoder: Encoder model instance
-        path: Path to checkpoint file
-        
-    Returns:
-        Encoder with loaded weights
-        
-    Raises:
-        FileNotFoundError: If the checkpoint file doesn't exist
-        RuntimeError: If there's an error loading the state dict
-    """
     logger = Logger("encoder_loader")
     logger.info(f"Loading pretrained encoder from: {path}")
     
@@ -271,4 +215,4 @@ def load_pretrained_encoder(encoder: nn.Module, path: str) -> nn.Module:
         logger.error(f"Error loading checkpoint: {str(e)}")
         raise RuntimeError(f"Failed to load checkpoint: {str(e)}")
     
-    return encoder 
+    return encoder

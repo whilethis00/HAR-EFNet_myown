@@ -20,7 +20,7 @@ def get_args():
     parser.add_argument('-d', '--data_name', default='pamap2', type=str, help='Name of the Dataset')    
     # Model
     parser.add_argument('-e', '--encoder_type', default='deepconvlstm_attn', type=str, 
-                         help='Encoder Type (deepconvlstm, deepconvlstm_attn, sa_har)') #encoder type
+                         help='Encoder Type (deepconvlstm, deepconvlstm_attn, deepconvlstm_attn_extended, sa_har)') #encoder type
     
     parser.add_argument('-c', '--classifier_type', default='deepconvlstm_attn_classifier', type=str, 
                          help='Classifier Type (deepconvlstm_classifier, deepconvlstm_attn_classifier, sa_har_classifier). If not specified, will auto-select based on encoder type.')
@@ -80,7 +80,9 @@ def get_args():
     }
         
     # data config
-    config_file = open('configs/data.yaml', mode='r')
+    # Construct an absolute path to data.yaml relative to this file's location
+    data_yaml_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data.yaml')
+    config_file = open(data_yaml_path, mode='r')
     data_config = yaml.load(config_file, Loader=yaml.FullLoader)
     data_config = data_config[args.data_name]
     
@@ -138,7 +140,12 @@ def get_args():
     
     # ECDF feature dimension
     args.n_ecdf_points = 25
-    args.output_size = (3, 78) 
+    if args.encoder_type == 'deepconvlstm_attn_extended':
+        # (25 ECDF points + 1 mean + 1 std + 1 skew + 1 kurtosis) * 3 sensors = 87
+        args.output_size = (3, 87)
+    else:
+        # (25 ECDF points + 1 mean) * 3 sensors = 78
+        args.output_size = (3, 78) 
     
     # Random seed and other settings
     args.sensor_select      = ["acc"] # ["acc", "gyro"]
