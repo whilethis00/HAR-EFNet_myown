@@ -7,12 +7,10 @@ from torch.utils.data import DataLoader, Dataset
 import yaml
 from typing import Tuple, Dict, List, Optional, Any, Union
 
-# --- 수정된 부분 1: 새로운 특징 추출 함수와 인코더 클래스를 임포트합니다. ---
 from encoders.base.deepconvlstm_encoder import DeepConvLSTMEncoder
 from encoders.base.deepconvlstm_attn_encoder import DeepConvLSTMAttnEncoder
 from encoders.base.sa_har_encoder import SAHAREncoder
 from dataloaders.data_utils import compute_batch_ecdf_features, compute_batch_extended_features
-# --------------------------------------------------------------------
 
 from utils.training_utils import EarlyStopping, adjust_learning_rate, set_seed
 from utils.logger import Logger
@@ -23,16 +21,16 @@ Logger.initialize(log_dir='logs')
 class EncoderTrainer:
     """
     ECDF feature prediction encoder training class
-    """"
+    """
     def __init__(self, args: Any, model: nn.Module, save_path: str):
-        """"
+        """
         Initialize the encoder trainer
         
         Args:
             args: configuration parameters
             model: encoder model to train
             save_path: model save path
-        """"
+        """
         self.model = model
         self.args = args # args를 저장하여 나중에 사용
         self.device = args.device
@@ -68,14 +66,12 @@ class EncoderTrainer:
             
             batch_x = batch_x.float().to(self.device)
             
-            # --- 수정된 부분 2: encoder_type에 따라 다른 특징 추출 함수를 호출합니다. ---
             if self.args.encoder_type == 'deepconvlstm_attn_extended':
                 batch_features = torch.tensor(compute_batch_extended_features(batch_x),
                                             dtype=torch.float32).to(self.device)
             else:
                 batch_features = torch.tensor(compute_batch_ecdf_features(batch_x), 
                                             dtype=torch.float32).to(self.device)
-            # --------------------------------------------------------------------
 
             predicted_features = self.model(batch_x)
             
@@ -108,14 +104,12 @@ class EncoderTrainer:
                 
                 batch_x = batch_x.float().to(self.device)
                 
-                # --- 수정된 부분 3: train_epoch와 동일하게 수정합니다. ---
                 if self.args.encoder_type == 'deepconvlstm_attn_extended':
                     batch_features = torch.tensor(compute_batch_extended_features(batch_x),
                                                 dtype=torch.float32).to(self.device)
                 else:
                     batch_features = torch.tensor(compute_batch_ecdf_features(batch_x), 
                                                 dtype=torch.float32).to(self.device)
-                # --------------------------------------------------------------------
 
                 predicted_features = self.model(batch_x)
                 
@@ -166,7 +160,6 @@ def create_encoder(args: Any) -> nn.Module:
     
     encoder_config = model_config['efnet_encoder']
     
-    # --- 수정된 부분 4: 새로운 인코더 타입을 위한 elif 블록을 추가합니다. ---
     if args.encoder_type == 'deepconvlstm':
         encoder_args.update(encoder_config.get('deepconvlstm', {}))
         model_class = DeepConvLSTMEncoder
@@ -191,7 +184,6 @@ def create_encoder(args: Any) -> nn.Module:
     else:
         logger.error(f"Unsupported encoder type: {args.encoder_type}")
         raise ValueError(f"Unsupported encoder type: {args.encoder_type}")
-    # --------------------------------------------------------------------
     
     encoder = model_class(encoder_args)
     

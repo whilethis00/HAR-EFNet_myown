@@ -45,7 +45,7 @@ class DeepConvLSTMAttnExtendedEncoder(EncoderBase):
     - Classification: Provides full LSTM sequence output for attention mechanism
     """
     def __init__(self, config):
-        super(DeepConvLSTMAttnEncoder, self).__init__(config)
+        super(DeepConvLSTMAttnExtendedEncoder, self).__init__(config)
         
         # Model specific parameters
         self.nb_conv_blocks = config.get('nb_conv_blocks', 2)
