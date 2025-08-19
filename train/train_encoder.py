@@ -172,7 +172,7 @@ def create_encoder(args: Any) -> nn.Module:
 
     elif args.encoder_type == 'deepconvlstm_attn_extended':
         from encoders.base.deepconvlstm_attn_extended_encoder import DeepConvLSTMAttnExtendedEncoder
-        encoder_args.update(encoder_config.get('deepconvlstm_attn', {})) # 기본 설정은 기존 attn 모델과 공유
+        encoder_args.update(encoder_config.get('deepconvlstm_attn_extended', {}))
         model_class = DeepConvLSTMAttnExtendedEncoder
         logger.info(f"Using DeepConvLSTM with Extended Attention encoder configuration")
 

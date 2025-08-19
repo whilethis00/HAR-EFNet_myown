@@ -57,11 +57,11 @@ class DeepConvLSTMAttnExtendedEncoder(EncoderBase):
         self.drop_prob = config.get('drop_prob', 0.5)
         self.nb_units_lstm = config.get('nb_units_lstm', 128)
         
-        if isinstance(self.output_size, tuple) and len(self.output_size) == 2:
-            self.axis_dim, self.feat_per_axis = self.output_size  # 3, 78
-            self.flat_output_size = self.axis_dim * self.feat_per_axis  # 3 * 78 = 234
+        if isinstance(self.output_size, (tuple, list)) and len(self.output_size) == 2:
+            self.axis_dim, self.feat_per_axis = self.output_size
+            self.flat_output_size = self.axis_dim * self.feat_per_axis
         else:
-            raise ValueError(f"Expected output_size to be a tuple (3, 78), got {self.output_size}")
+            raise ValueError(f"Expected output_size to be a tuple or list of length 2, got {self.output_size}")
         
         # Define convolutional blocks
         self.conv_blocks = []
