@@ -8,6 +8,7 @@ from dataloaders.data_loader import PAMAP2, get_data
 from utils.training_utils import set_seed, save_results_summary
 from utils.logger import Logger
 
+from dataloaders.data_utils import TargetNormalizer, compute_batch_extended_features, compute_batch_ecdf_features
 from train.train_encoder import create_encoder, load_pretrained_encoder, EncoderTrainer
 from train.train_classifier import create_classifier, ClassifierTrainer, evaluate_classifier
 
@@ -15,10 +16,13 @@ if __name__ == '__main__':
     args = get_args() # configs/config.py
 
     # Timestamp
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    args.timestamp = timestamp
+    if args.timestamp is None:
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        args.timestamp = timestamp
+    else:
+        timestamp = args.timestamp
     
-    logger = Logger(f"har_{args.encoder_type}_{args.classifier_type}")
+    logger = Logger(f"har_{args.encoder_type}_{args.classifier_type}", run_id=args.run_id)
 
     # Random Seed
     set_seed(args.seed)
@@ -43,8 +47,8 @@ if __name__ == '__main__':
         fold_range = [args.specific_subject - 1] 
         logger.info(f"Restricting training/evaluation: Testing only Subject {args.specific_subject}")
     else:
-        fold_range = range(len(dataset.LOCV_keys))
-        logger.info(f"Running all {len(dataset.LOCV_keys)} subjects")
+        fold_range = range(args.start_fold - 1, len(dataset.LOCV_keys))
+        logger.info(f"Running subjects from fold {args.start_fold} to {len(dataset.LOCV_keys)}")
 
     # Cross-validation for each test subject
     logger.info(f"Starting {len(fold_range)}-fold")
@@ -96,8 +100,24 @@ if __name__ == '__main__':
         if args.train_encoder:
             logger.info(f"Training encoder for fold {fold_idx+1}, test subject {current_test_subject}")
             
+            # Fit the TargetNormalizer on the training data for the current fold
+            logger.info("Fitting TargetNormalizer on training data...")
+            target_normalizer = TargetNormalizer()
+            
+            all_train_features = []
+            for batch_x, _ in train_loader:
+                if args.encoder_type == 'deepconvlstm_attn_extended':
+                    features = compute_batch_extended_features(batch_x.numpy())
+                else:
+                    features = compute_batch_ecdf_features(batch_x.numpy())
+                all_train_features.append(features)
+            
+            all_train_features_np = np.concatenate(all_train_features, axis=0)
+            target_normalizer.fit(all_train_features_np)
+            logger.info("TargetNormalizer fitted.")
+
             encoder = create_encoder(args)
-            encoder_trainer = EncoderTrainer(args, encoder, encoder_save_path)
+            encoder_trainer = EncoderTrainer(args, encoder, encoder_save_path, target_normalizer=target_normalizer)
             encoder = encoder_trainer.train(train_loader, valid_loader)
             
             logger.info(f"Encoder training completed for fold {fold_idx+1}")

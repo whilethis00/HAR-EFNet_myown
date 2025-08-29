@@ -135,8 +135,6 @@ class PAMAP2(object):
         self.train_slidingwindows, self.activity_per_windows = self.get_the_sliding_index(self.data_x.copy(), self.data_y.copy(), "train")
         self.test_slidingwindows, _  = self.get_the_sliding_index(self.data_x.copy(), self.data_y.copy(), "test")
 
-
-
     def load_all_the_data(self, data_path):
         # if preprocessed dataset already exists in pickle file, load from the saved_data_path
 

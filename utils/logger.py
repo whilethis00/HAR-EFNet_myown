@@ -12,12 +12,13 @@ class Logger:
     _is_initialized = False
     
     @classmethod
-    def initialize(cls, log_dir='logs'):
+    def initialize(cls, log_dir='logs', run_id=None):
         """
         Initialize logger at class level. Sets up file handlers for all instances to use.
         
         Args:
             log_dir: Directory where log files will be saved
+            run_id: Optional run ID to use. If None, a new one is generated.
         """
         # Skip if already initialized
         if cls._is_initialized:
@@ -37,7 +38,10 @@ class Logger:
         Path(debug_log_dir).mkdir(parents=True, exist_ok=True)
         
         # Generate run ID (timestamp)
-        cls._run_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+        if run_id:
+            cls._run_id = run_id
+        else:
+            cls._run_id = datetime.now().strftime('%Y%m%d_%H%M%S')
         cls._log_dir_path = log_dir_path
         
         # Create common formatter
@@ -81,19 +85,20 @@ class Logger:
         # Mark as initialized
         cls._is_initialized = True
     
-    def __init__(self, name, log_level=logging.INFO):
+    def __init__(self, name, log_level=logging.INFO, run_id=None):
         """
         Initialize a new logger instance
         
         Args:
             name: Name of the logger
             log_level: Minimum log level to display in console (default: INFO)
+            run_id: Optional run ID to use for the session.
         """
         self.name = name
         
         # Initialize logger system if not already done
         if not Logger._is_initialized:
-            Logger.initialize()
+            Logger.initialize(run_id=run_id)
         
         # Reuse existing logger if it exists
         if name in Logger._loggers:

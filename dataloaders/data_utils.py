@@ -175,3 +175,80 @@ def compute_batch_extended_features(batch_data: Union[np.ndarray, torch.Tensor])
         features[i] = compute_extended_features(batch_data[i])
     
     return features
+
+class TargetNormalizer:
+    """
+    Normalizes target features of shape (n_samples, 3, n_features_per_axis).
+    The mean and std are computed for each feature across all samples,
+    independently for each of the 3 main axes.
+    """
+    def __init__(self):
+        self.mean = None
+        self.std = None
+
+    def fit(self, data: np.ndarray):
+        """
+        Computes mean and std for normalization.
+        
+        Args:
+            data (np.ndarray): A numpy array of shape (n_samples, 3, n_features_per_axis).
+        """
+        if data.ndim != 3:
+            raise ValueError(f"Data must be 3-dimensional, but got shape {data.shape}")
+        # Calculate mean and std along the samples axis (axis 0).
+        # This results in shape (3, n_features_per_axis).
+        self.mean = np.mean(data, axis=0)
+        self.std = np.std(data, axis=0)
+
+    def transform(self, data: np.ndarray) -> np.ndarray:
+        """
+        Applies normalization to the data.
+        
+        Args:
+            data (np.ndarray): A numpy array of shape (n_samples, 3, n_features_per_axis)
+                               or (3, n_features_per_axis) for a single sample.
+        
+        Returns:
+            np.ndarray: Normalized data.
+        """
+        if self.mean is None or self.std is None:
+            raise RuntimeError("Normalizer has not been fitted yet. Call fit() first.")
+        
+        is_single_sample = data.ndim == 2
+        if is_single_sample:
+            if data.shape != self.mean.shape:
+                 raise ValueError(f"Single sample shape {data.shape} is incompatible with normalizer shape {self.mean.shape}")
+            data = np.expand_dims(data, axis=0)
+
+        if data.ndim != 3 or data.shape[1:] != self.mean.shape:
+            raise ValueError(f"Data shape {data.shape} is incompatible with normalizer shape {self.mean.shape}")
+
+        normalized_data = (data - self.mean) / (self.std + np.finfo(float).eps)
+        
+        return np.squeeze(normalized_data) if is_single_sample else normalized_data
+
+    def inverse_transform(self, data: np.ndarray) -> np.ndarray:
+        """
+        Applies inverse normalization to the data.
+        
+        Args:
+            data (np.ndarray): Normalized numpy array.
+        
+        Returns:
+            np.ndarray: Denormalized data.
+        """
+        if self.mean is None or self.std is None:
+            raise RuntimeError("Normalizer has not been fitted yet. Call fit() first.")
+        
+        is_single_sample = data.ndim == 2
+        if is_single_sample:
+            if data.shape != self.mean.shape:
+                 raise ValueError(f"Single sample shape {data.shape} is incompatible with normalizer shape {self.mean.shape}")
+            data = np.expand_dims(data, axis=0)
+            
+        if data.ndim != 3 or data.shape[1:] != self.mean.shape:
+            raise ValueError(f"Data shape {data.shape} is incompatible with normalizer shape {self.mean.shape}")
+
+        denormalized_data = (data * (self.std + np.finfo(float).eps)) + self.mean
+        
+        return np.squeeze(denormalized_data) if is_single_sample else denormalized_data

@@ -40,6 +40,9 @@ def get_args():
  
     # LOOCV settings
     parser.add_argument('--specific_subject', default=None, type=int, help='Test only specific subject (1-8), None to test all subjects')
+    parser.add_argument('--start_fold', default=1, type=int, help='Start training from a specific fold number (1-8)')
+    parser.add_argument('--timestamp', default=None, type=str, help='Timestamp for the training session')
+    parser.add_argument('--run_id', default=None, type=str, help='Run ID for the training session')
     
     # MTL pretraining settings
     parser.add_argument('--mtl_mode', default=False, type=str2bool, help='Use MTL SSL pretraining')

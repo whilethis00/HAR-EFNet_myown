@@ -22,7 +22,7 @@ class EncoderTrainer:
     """
     ECDF feature prediction encoder training class
     """
-    def __init__(self, args: Any, model: nn.Module, save_path: str):
+    def __init__(self, args: Any, model: nn.Module, save_path: str, target_normalizer: object = None):
         """
         Initialize the encoder trainer
         
@@ -30,11 +30,13 @@ class EncoderTrainer:
             args: configuration parameters
             model: encoder model to train
             save_path: model save path
+            target_normalizer: normalizer for target features
         """
         self.model = model
-        self.args = args # args를 저장하여 나중에 사용
+        self.args = args
         self.device = args.device
         self.model.to(self.device)
+        self.target_normalizer = target_normalizer
         
         self.logger = Logger(f"encoder_{args.encoder_type}")
         self.logger.info(f"Using device: {self.device}")
@@ -66,12 +68,17 @@ class EncoderTrainer:
             
             batch_x = batch_x.float().to(self.device)
             
+            # Compute raw target features
             if self.args.encoder_type == 'deepconvlstm_attn_extended':
-                batch_features = torch.tensor(compute_batch_extended_features(batch_x),
-                                            dtype=torch.float32).to(self.device)
+                batch_features_np = compute_batch_extended_features(batch_x.cpu().numpy())
             else:
-                batch_features = torch.tensor(compute_batch_ecdf_features(batch_x), 
-                                            dtype=torch.float32).to(self.device)
+                batch_features_np = compute_batch_ecdf_features(batch_x.cpu().numpy())
+            
+            # Normalize features if a normalizer is provided
+            if self.target_normalizer:
+                batch_features_np = self.target_normalizer.transform(batch_features_np)
+
+            batch_features = torch.tensor(batch_features_np, dtype=torch.float32).to(self.device)
 
             predicted_features = self.model(batch_x)
             
@@ -104,12 +111,17 @@ class EncoderTrainer:
                 
                 batch_x = batch_x.float().to(self.device)
                 
+                # Compute raw target features
                 if self.args.encoder_type == 'deepconvlstm_attn_extended':
-                    batch_features = torch.tensor(compute_batch_extended_features(batch_x),
-                                                dtype=torch.float32).to(self.device)
+                    batch_features_np = compute_batch_extended_features(batch_x.cpu().numpy())
                 else:
-                    batch_features = torch.tensor(compute_batch_ecdf_features(batch_x), 
-                                                dtype=torch.float32).to(self.device)
+                    batch_features_np = compute_batch_ecdf_features(batch_x.cpu().numpy())
+
+                # Normalize features if a normalizer is provided
+                if self.target_normalizer:
+                    batch_features_np = self.target_normalizer.transform(batch_features_np)
+
+                batch_features = torch.tensor(batch_features_np, dtype=torch.float32).to(self.device)
 
                 predicted_features = self.model(batch_x)
                 
