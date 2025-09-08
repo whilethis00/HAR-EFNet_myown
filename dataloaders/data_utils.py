@@ -145,6 +145,10 @@ def compute_extended_features(window_data: Union[np.ndarray, torch.Tensor], n_po
             skew_value = skew(channel_data)
             kurt_value = kurtosis(channel_data)
             
+            # 가설 1: 통계값 안정화를 위한 로그 변환 적용
+            skew_value = np.log1p(np.abs(skew_value))
+            kurt_value = np.log1p(np.abs(kurt_value))
+            
             sorted_data = np.sort(channel_data)
             indices = np.around(np.linspace(0, len(sorted_data) - 1, num=n_points)).astype(int)
             ecdf_points = sorted_data[indices]

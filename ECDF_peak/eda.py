@@ -10,6 +10,7 @@ import random
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from scipy.stats import gaussian_kde, kurtosis, skew
+from scipy.signal import find_peaks
 from matplotlib.lines import Line2D
 
 from configs.config import get_args
@@ -175,7 +176,7 @@ def run_eda_statistical_analysis(statistic='kurtosis'):
     """
     print(f"\n{'='*60}")
     print(f"--- EDA ({statistic.capitalize()} Analysis for All Subjects and Activities) 시작 ---")
-    print(f"{'='*60}")
+    print(f"{ '='*60}")
 
     # 1. 설정 및 데이터 로더 준비
     args = get_args()
@@ -356,10 +357,194 @@ def run_eda_feature_scaling_analysis():
     print(summary_df.to_string())
     print(f"\n--- 분석 종료 ---")
 
+def run_pdf_mode_analysis():
+    """
+    활동 및 센서별 데이터 분포의 모드(mode)를 분석하고, 결과를 CSV와 그래프로 저장합니다.
+    - 각 활동/센서별 모든 윈도우 데이터를 집계하여 대표 분포를 생성합니다.
+    - scipy.signal.find_peaks를 사용하여 분포의 봉우리(모드)를 찾습니다.
+    - 분석 결과(모드 개수, 위치 등)를 CSV 파일로 저장합니다.
+    - KDE 분포와 감지된 모드를 함께 시각화하여 PNG 파일로 저장합니다.
+    """
+    print(f"\n{'='*60}")
+    print("--- EDA (PDF Mode Analysis) 시작 ---")
+    print(f"{ '='*60}")
+
+    # 1. 설정 및 데이터 로더 준비
+    args = get_args()
+    args.datanorm_type = None
+    dataset = PAMAP2(args)
+    
+    activity_id_to_name = {id: name for id, name in dataset.label_map}
+    
+    sensor_groups = {
+        'Hand': ['acc_x_hand', 'acc_y_hand', 'acc_z_hand'],
+        'Chest': ['acc_x_chest', 'acc_y_chest', 'acc_z_chest'],
+        'Ankle': ['acc_x_ankle', 'acc_y_ankle', 'acc_z_ankle']
+    }
+    axis_colors = {'x': 'royalblue', 'y': 'darkorange', 'z': 'forestgreen'}
+    
+    # 2. 데이터 필터링 (특정 Subject)
+    if args.specific_subject is not None and args.specific_subject in dataset.all_keys:
+        print(f"--- 특정 Subject '{args.specific_subject}'의 훈련 데이터만 사용 ---")
+        train_windows = [w for w in dataset.train_slidingwindows if w[0] == args.specific_subject]
+        train_activities = [act for w, act in zip(dataset.train_slidingwindows, dataset.activity_per_windows) if w[0] == args.specific_subject]
+        if not train_windows:
+            print(f"오류: Subject '{args.specific_subject}'에 대한 훈련 데이터가 없습니다.")
+            return
+    else:
+        print("--- 모든 Subject의 훈련 데이터 사용 ---")
+        train_windows = dataset.train_slidingwindows
+        train_activities = dataset.activity_per_windows
+
+    # 3. 활동별/센서별 데이터 집계
+    print("--- 활동별, 센서별 데이터 집계 중 ---")
+    activity_sensor_data = {}
+    
+    # 활동 ID를 키로 사용하는 딕셔너리 초기화
+    for act_id in activity_id_to_name.keys():
+        activity_sensor_data[act_id] = {sensor: [] for group in sensor_groups.values() for sensor in group}
+
+    # 윈도우를 순회하며 데이터 축적
+    for window, activity_id in zip(train_windows, train_activities):
+        if activity_id not in activity_sensor_data:
+            continue
+        
+        _, start, end = window
+        for sensor_list in sensor_groups.values():
+            for sensor_name in sensor_list:
+                try:
+                    window_data = dataset.data_x.iloc[start:end][sensor_name].values
+                    activity_sensor_data[activity_id][sensor_name].extend(window_data)
+                except KeyError:
+                    continue
+
+    # 4. 모드 분석 및 결과 저장
+    print("--- 모드 분석 시작 ---")
+    analysis_results = []
+    
+    activities_with_data = sorted([act_id for act_id, sensors in activity_sensor_data.items() if any(len(data) > 20 for data in sensors.values())])
+    
+    if not activities_with_data:
+        print("오류: 분석할 데이터가 충분하지 않습니다.")
+        return
+
+    for activity_id in activities_with_data:
+        activity_name = activity_id_to_name.get(activity_id, "Unknown")
+        for sensor_name, all_data in activity_sensor_data[activity_id].items():
+            if len(all_data) < 50: # KDE와 peak 분석을 위해 충분한 데이터 필요
+                continue
+
+            try:
+                kde = gaussian_kde(all_data)
+                x_range = np.linspace(min(all_data), max(all_data), 1000)
+                kde_values = kde(x_range)
+                
+                # Prominence를 이용해 유의미한 peak만 찾기 (값은 데이터 스케일에 따라 조정 필요)
+                peaks, properties = find_peaks(kde_values, prominence=0.01)
+                
+                analysis_results.append({
+                    'activity_name': activity_name,
+                    'sensor': sensor_name,
+                    'num_modes': len(peaks),
+                    'peak_locations': [round(x, 3) for x in x_range[peaks]],
+                    'peak_prominences': [round(p, 3) for p in properties['prominences']]
+                })
+            except (np.linalg.LinAlgError, ValueError) as e:
+                print(f"경고: {activity_name} - {sensor_name} 분석 중 오류 발생: {e}")
+                continue
+    
+    if not analysis_results:
+        print("오류: 모드 분석 결과를 생성하지 못했습니다.")
+        return
+
+    # 5. CSV 파일로 저장
+    results_df = pd.DataFrame(analysis_results)
+    timestamp = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y%m%d_%H%M%S")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    print(f"\n--- PDF 모드 분석 결과 (Raw 데이터) ---")
+    print(results_df.to_string())
+    output_filename_csv = f"eda_pdf_mode_analysis_data_{timestamp}.csv"
+    output_path_csv = os.path.join(script_dir, output_filename_csv)
+    results_df.to_csv(output_path_csv, index=False)
+    print(f"\n'{output_filename_csv}' 파일에 Raw 데이터가 저장되었습니다.")
+    print(f"저장 위치: {output_path_csv}")
+
+    # 6. 시각화
+    print("\n--- 시각화 생성 중 ---")
+    num_activities = len(activities_with_data)
+    fig, axes = plt.subplots(len(sensor_groups), num_activities, figsize=(4 * num_activities, 15), sharex=False, sharey=False)
+
+    title_text = f'PDF Mode Analysis across {num_activities} Activities'
+    if args.specific_subject is not None:
+        title_text += f' (Subject {args.specific_subject})'
+    fig.suptitle(title_text, fontsize=18)
+
+    for row_idx, (body_part, sensor_list) in enumerate(sensor_groups.items()):
+        for col_idx, activity_id in enumerate(activities_with_data):
+            ax = axes[row_idx, col_idx] if num_activities > 1 else axes[row_idx]
+            activity_name = activity_id_to_name.get(activity_id, "Unknown")
+
+            if col_idx == 0:
+                ax.set_ylabel(f'{body_part}\n\nDensity', fontweight='bold')
+
+            plot_title = f"Activity: {activity_name}"
+            
+            num_modes_list = []
+
+            for sensor_name in sensor_list:
+                all_data = activity_sensor_data[activity_id].get(sensor_name)
+                if not all_data or len(all_data) < 50: # KDE와 peak 분석을 위해 충분한 데이터 필요
+                    continue
+
+                axis = sensor_name.split('_')[1]
+                color = axis_colors.get(axis, 'black')
+
+                try:
+                    kde = gaussian_kde(all_data)
+                    x_range = np.linspace(min(all_data), max(all_data), 1000)
+                    kde_values = kde(x_range)
+                    
+                    peaks, _ = find_peaks(kde_values, prominence=0.01)
+                    num_modes_list.append(str(len(peaks)))
+
+                    # KDE 플롯
+                    ax.plot(x_range, kde_values, color=color, alpha=0.8, label=f'Axis {axis.upper()}')
+                    ax.fill_between(x_range, kde_values, color=color, alpha=0.2)
+                    
+                    # Peak 점 찍기
+                    ax.plot(x_range[peaks], kde_values[peaks], 'o', color='red', markersize=5)
+
+                except (np.linalg.LinAlgError, ValueError):
+                    continue
+            
+            if num_modes_list:
+                plot_title += f"\nModes (X,Y,Z): ({', '.join(num_modes_list)})"
+
+            ax.set_title(plot_title)
+            ax.set_xlabel("Sensor Value")
+            
+            handles, labels = ax.get_legend_handles_labels()
+            if handles:
+                handles.append(Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=8))
+                labels.append('Detected Mode')
+                ax.legend(handles=handles, labels=labels, fontsize='small')
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    output_filename_png = f"eda_pdf_mode_analysis_plot_{timestamp}.png"
+    output_path_png = os.path.join(script_dir, output_filename_png)
+    plt.savefig(output_path_png)
+    plt.close(fig)
+    print(f"\n'{output_filename_png}' 파일에 시각화 결과가 저장되었습니다.")
+    print(f"저장 위치: {output_path_png}")
+    
+    print(f"\n--- PDF 모드 분석 종료 ---")
+
 
 if __name__ == '__main__':
     # run_eda_grouped_kde_plot()
     # run_eda_statistical_analysis(statistic='kurtosis')
     # run_eda_statistical_analysis(statistic='std')
     # run_eda_statistical_analysis(statistic='skew')
-    run_eda_feature_scaling_analysis()
+    # run_eda_feature_scaling_analysis()
+    run_pdf_mode_analysis()
